@@ -1,0 +1,128 @@
+{% extends 'main/layout.html' %}
+
+{% block title %}Справочники — VagonDar{% endblock %}
+
+{% block content %}
+<div class="container-xl py-3">
+  <div class="vd-toolbar mb-3">
+    <h1>Справочники</h1>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-header bg-white d-flex align-items-center">
+          <h2 class="h5 mb-0 me-auto"><i class="bi bi-geo-alt me-2"></i>Направления</h2>
+          <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addDestinationModal">
+            <i class="bi bi-plus-lg me-1"></i>Добавить
+          </button>
+        </div>
+        <div class="table-responsive">
+          <table class="table vd-table align-middle mb-0" style="min-width: 0">
+            <thead>
+            <tr>
+              <th>Предприятие</th>
+              <th class="num">Расстояние, км</th>
+              <th class="num">Вагонов</th>
+              <th class="col-actions"></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for d in destinations %}
+            <tr>
+              <td>{{ d.name }}</td>
+              <td class="num">{{ d.distance_km|floatformat:4 }}</td>
+              <td class="num text-muted">{{ d.used }}</td>
+              <td class="col-actions">
+                <button class="btn btn-sm btn-link text-secondary btn-icon" title="Изменить"
+                        data-bs-toggle="modal" data-bs-target="#editDestinationModal"
+                        data-fill='{"object_id": "{{ d.id }}", "name": "{{ d.name|escapejs }}", "distance_km": "{{ d.distance_km|stringformat:'s' }}"}'>
+                  <i class="bi bi-pencil"></i>
+                </button>
+                {% if not d.used %}
+                <form method="post" class="d-inline" onsubmit="return confirm('Удалить направление {{ d.name|escapejs }}?')">
+                  {% csrf_token %}
+                  <input type="hidden" name="action_type" value="delete_destination">
+                  <input type="hidden" name="object_id" value="{{ d.id }}">
+                  <button class="btn btn-sm btn-link text-danger btn-icon" type="submit" title="Удалить">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+                {% else %}
+                <span class="btn btn-sm btn-link text-body-tertiary btn-icon disabled" title="Используется — удалить нельзя">
+                  <i class="bi bi-trash"></i>
+                </span>
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="vd-empty">Направлений пока нет</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-header bg-white d-flex align-items-center">
+          <h2 class="h5 mb-0 me-auto"><i class="bi bi-cash-coin me-2"></i>Тарифы</h2>
+          <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addTariffModal">
+            <i class="bi bi-plus-lg me-1"></i>Добавить
+          </button>
+        </div>
+        <div class="table-responsive">
+          <table class="table vd-table align-middle mb-0" style="min-width: 0">
+            <thead>
+            <tr>
+              <th>Действует с</th>
+              <th class="num">Тариф, ₸</th>
+              <th class="num">Событий</th>
+              <th class="col-actions"></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for t in tariffs %}
+            <tr>
+              <td>{{ t.start_date|date:"d.m.Y" }}{% if t.id == current_tariff_id %} <span class="badge text-bg-success ms-1">текущий</span>{% endif %}</td>
+              <td class="num">{{ t.tariff|floatformat:"2g" }}</td>
+              <td class="num text-muted">{{ t.used }}</td>
+              <td class="col-actions">
+                <button class="btn btn-sm btn-link text-secondary btn-icon" title="Изменить"
+                        data-bs-toggle="modal" data-bs-target="#editTariffModal"
+                        data-fill='{"object_id": "{{ t.id }}", "start_date": "{{ t.start_date|date:'Y-m-d' }}", "tariff": "{{ t.tariff|stringformat:'s' }}"}'>
+                  <i class="bi bi-pencil"></i>
+                </button>
+                {% if not t.used %}
+                <form method="post" class="d-inline" onsubmit="return confirm('Удалить тариф от {{ t.start_date|date:'d.m.Y' }}?')">
+                  {% csrf_token %}
+                  <input type="hidden" name="action_type" value="delete_tariff">
+                  <input type="hidden" name="object_id" value="{{ t.id }}">
+                  <button class="btn btn-sm btn-link text-danger btn-icon" type="submit" title="Удалить">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+                {% else %}
+                <span class="btn btn-sm btn-link text-body-tertiary btn-icon disabled" title="Используется — удалить нельзя">
+                  <i class="bi bi-trash"></i>
+                </span>
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="vd-empty">Тарифов пока нет</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer bg-white small text-muted">
+          Если у события не выбран тариф, подставляется тариф, действующий на дату события.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% include "main/_reference_modals.html" %}
+{% endblock %}

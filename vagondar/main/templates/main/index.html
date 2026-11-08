@@ -1,255 +1,268 @@
 {% extends 'main/layout.html' %}
-{% load static %}
 
-{% block head %}
-<link rel="stylesheet" href="{% static 'main/css/index.css' %}">
-{% endblock %}
+{% block title %}События — VagonDar{% endblock %}
 
 {% block content %}
+<div class="container-xl py-3">
 
-<div id="addWagon" class="modal">
-    <div class="modal-content">
-        <h1>Добавление вагона:</h1>
-        <form method="post" action="{% url 'main' %}" style="margin: 5px">
-            {% csrf_token %}
-            <p>Номер вагона</p>
-            {{ add_wagon_form.wagon_number }}
-            <p>Направление</p>
-            {{ add_wagon_form.destination }}
-            <p>Заметка</p>
-            {{ add_wagon_form.notes }}
-            <input type="hidden" name="event_id" value="">
-            <input type="hidden" name="action_type" value="add_wagon">
-            <br>
-            <button class="btn btn-success">Добавить</button>
-        </form>
-        <button class="btn btn-danger" onclick="closeModal('addWagon')">Закрыть</button>
+  <div class="vd-toolbar mb-3">
+    <h1>События</h1>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addEventModal">
+      <i class="bi bi-plus-lg me-1"></i>Событие
+    </button>
+    <div class="btn-group">
+      <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+        <i class="bi bi-journal-plus me-1"></i>Добавить
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#addDestinationModal">
+          <i class="bi bi-geo-alt me-2"></i>Направление</button></li>
+        <li><button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#addTariffModal">
+          <i class="bi bi-cash-coin me-2"></i>Тариф</button></li>
+      </ul>
     </div>
-</div>
+    <button class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#exportPeriodModal">
+      <i class="bi bi-file-earmark-excel me-1"></i>Excel за период
+    </button>
+  </div>
 
-<div id="addDestination" class="modal">
-    <div class="modal-content">
-        <h1>Добавление направления:</h1>
-        <form method="post" action="{% url 'main' %}" style="margin: 5px">
-            {% csrf_token %}
-            <p>Название предприятия:</p>
-            {{ add_destination_form.name }}
-            <p>Расстояние, км:</p>
-            {{ add_destination_form.distance_km }}
-            <br>
-            <br>
-            <input type="hidden" name="action_type" value="add_destination">
-            <button class="btn btn-success">Добавить</button>
-        </form>
-        <button class="btn btn-danger" onclick="closeModal('addDestination')">Закрыть</button>
+  <form class="vd-filters row g-2 align-items-end mb-3" method="get" action="{% url 'main' %}">
+    <div class="col-12 col-md-4">
+      <label class="form-label small text-muted mb-1" for="f-search">Поиск</label>
+      <input class="form-control" id="f-search" type="search" name="search_events"
+             value="{{ request.GET.search_events }}" placeholder="№ вагона, дата (дд.мм.гггг) или ID">
     </div>
-</div>
-
-<div id="addEvent" class="modal">
-    <div class="modal-content">
-        <h1>Добавить событие:</h1>
-        <form action="{% url 'main' %}" method="post" style="margin: 5px">
-            {% csrf_token %}
-            <p>Тип события:</p>
-            {{ add_event_form.operation_type }}
-            <p>Дата события:</p>
-            {{ add_event_form.event_date }}
-            <p>Время события:</p>
-            {{ add_event_form.event_time }}
-            <p>Тариф:</p>
-            {{ add_event_form.tariff }}
-            <p>Заметка (необязательно):</p>
-            {{ add_event_form.notes }}
-            <br>
-            <br>
-            <input type="hidden" name="action_type" value="add_event">
-            <button class="btn btn-success">Добавить</button>
-        </form>
-        <button class="btn btn-danger" onclick="closeModal('addEvent')">Закрыть</button>
+    <div class="col-6 col-md-2">
+      <label class="form-label small text-muted mb-1" for="f-op">Операция</label>
+      <select class="form-select" id="f-op" name="op">
+        <option value="">Все</option>
+        <option value="arrival" {% if request.GET.op == "arrival" %}selected{% endif %}>Пригон</option>
+        <option value="removal" {% if request.GET.op == "removal" %}selected{% endif %}>Уборка</option>
+      </select>
     </div>
-</div>
-
-<div id="editEvent" class="modal">
-    <div class="modal-content">
-        <h1>Изменить событие:</h1>
-        <form action="{% url 'main' %}" method="post" style="margin: 5px">
-            {% csrf_token %}
-            {{ add_event_form.as_p }}
-            <input type="hidden" name="action_type" value="edit_event">
-            <input type="hidden" name="event_id" value="">
-            <button class="btn btn-success">Сохранить</button>
-        </form>
-        <button class="btn btn-danger" onclick="closeModal('editEvent')">Закрыть</button>
+    <div class="col-6 col-md-2">
+      <label class="form-label small text-muted mb-1" for="f-from">С даты</label>
+      <input class="form-control" id="f-from" type="date" name="date_from" value="{{ request.GET.date_from }}">
     </div>
-</div>
-
-<div id="addTariff" class="modal">
-    <div class="modal-content">
-        <h1>Добавить тариф:</h1>
-        <form action="{% url 'main' %}" method="post" style="margin: 5px">
-            {% csrf_token %}
-            {{ add_tariff_form.as_p }}
-            <input type="hidden" name="action_type" value="add_tariff">
-            <button class="btn btn-success">Добавить</button>
-        </form>
-        <button class="btn btn-danger" onclick="closeModal('addTariff')">Закрыть</button>
+    <div class="col-6 col-md-2">
+      <label class="form-label small text-muted mb-1" for="f-to">По дату</label>
+      <input class="form-control" id="f-to" type="date" name="date_to" value="{{ request.GET.date_to }}">
     </div>
-</div>
-
-<div id="editWagon" class="modal">
-    <div class="modal-content">
-        <h1>Изменить вагон:</h1>
-        <form action="{% url 'main' %}" method="post" style="margin: 5px">
-            {% csrf_token %}
-            {{ add_wagon_form.as_p }}
-            <input type="hidden" name="action_type" value="edit_wagon">
-            <input type="hidden" name="wagon_id" value="">
-            <button class="btn btn-success">Сохранить</button>
-        </form>
-        <button class="btn btn-danger" onclick="closeModal('editWagon')">Закрыть</button>
-    </div>
-</div>
-
-<div id="exportExcelDate" class="modal">
-    <div class="modal-content">
-        <h1>Экспорт в Excel за период:</h1>
-        <form action="{% url 'export_period' %}" method="get" style="margin: 5px">
-            <p>С: <input type="date" name="start_date" required></p>
-            <p>По: <input type="date" name="end_date" required></p>
-            <p>
-                <select name="operation_type">
-                    <option value="">Все операции</option>
-                    <option value="arrival">Пригон</option>
-                    <option value="removal">Уборка</option>
-                </select>
-            </p>
-            <button class="btn btn-success">Экспортировать</button>
-        </form>
-        <button class="btn btn-danger" onclick="closeModal('exportExcelDate')">Закрыть</button>
-    </div>
-</div>
-
-{% for event in events %}
-<div class="card my-3">
-    <div class="card-header">
-        <div>
-            <strong>Тип операции:</strong> {{ event.get_operation_type_display }}<br>
-            <strong>Тариф:</strong>
-            {% if event.calc.tariff is not None %}{{ event.calc.tariff }} ₸{% else %}<span class="text-danger">не задан</span>{% endif %}<br>
-            <strong>Дата:</strong> {{ event.event_date|date:"d.m.Y" }} <br>
-            <strong>Время:</strong> {{ event.event_time|time:"H:i" }} <br>
-            <strong>Количество вагонов:</strong> {{ event.calc.rows|length }} <br>
-            <strong>Итоговый объем:</strong> {{ event.calc.total_vol|floatformat:3 }} <br>
-            <strong>Сумма итого:</strong>
-            {% if event.calc.total_price is not None %}{{ event.calc.total_price|floatformat:2 }} ₸{% else %}—{% endif %}
-            {% if event.calc.skipped_wagons %}
-            <br><span class="text-danger">Вагонов без направления (не учтены в расчёте): {{ event.calc.skipped_wagons }}</span>
-            {% endif %}
-            {% if event.notes %}<br><strong>Заметка:</strong> {{ event.notes }}{% endif %}
-        </div>
-        <div>
-            <button class="btn btn-success" onclick="openModal('addWagon', {{ event.id }})">Добавить вагон</button>
-            <button class="btn btn-info" type="button" onclick="openEditEvent({{ event.id }})">Изменить данные</button>
-            <form method="post" action="{% url 'delete_event' event.id %}" style="display: inline">
-                {% csrf_token %}
-                <button class="btn btn-danger" type="submit" onclick="return confirm('Удалить это событие?')">Удалить
-                    событие
-                </button>
-            </form>
-            <a class="btn btn-secondary" href="{% url 'export_event' event.id %}">Экспорт в Excel</a>
-        </div>
-    </div>
-    <div class="card-body">
-        <strong>Вагоны:</strong>
-        <div class="table-wrap">
-            <table class="striped-table">
-                <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Направление</th>
-                    <th>№ вагона</th>
-                    <th>Протяженность 1</th>
-                    <th>Протяженность 2</th>
-                    <th>Протяженность 3</th>
-                    <th>Объем за вагон</th>
-                    <th>Объем за локомотив</th>
-                    <th>Итого объем</th>
-                    <th>Итого</th>
-                    <th>Действия</th>
-                </tr>
-                </thead>
-
-                <tbody>
-                {% for row in event.calc.rows %}
-                <tr>
-                    <td>{{ forloop.counter }}</td>
-                    {% if row.has_destination %}
-                    <td>{{ row.wagon.destination.name }}</td>
-                    <td>{{ row.wagon.wagon_number }}</td>
-                    <td>{{ row.distance_1|floatformat:3 }}</td>
-                    <td>{{ row.distance_2|floatformat:3 }}</td>
-                    <td>{{ row.distance_3|floatformat:3 }}</td>
-                    <td>{{ row.dist_sum|floatformat:3 }}</td>
-                    <td>{{ row.vol_per_loko|floatformat:3 }}</td>
-                    <td>{{ row.total_vol|floatformat:3 }}</td>
-                    <td>{% if row.price is not None %}{{ row.price|floatformat:2 }}{% else %}—{% endif %}</td>
-                    {% else %}
-                    <td class="text-danger">нет направления</td>
-                    <td>{{ row.wagon.wagon_number }}</td>
-                    <td colspan="7" class="text-muted">не учитывается в расчёте</td>
-                    {% endif %}
-                    <td>
-                        <div class="actions">
-                            <form method="post" action="{% url 'delete_wagon' row.wagon.id %}">
-                                {% csrf_token %}
-                                <button class="btn btn-danger btn-sm" type="submit"
-                                        onclick="return confirm('Удалить вагон {{ row.wagon.wagon_number|escapejs }}?')">
-                                    Удалить
-                                </button>
-                            </form>
-                            <button class="btn btn-success btn-sm" onclick="openEditWagon({{ row.wagon.id }})">
-                                Изменить
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="11" class="empty-row">Вагонов нет</td>
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% empty %}
-<p class="text-center text-muted my-5">
-    {% if request.GET.search_events %}Ничего не найдено по запросу «{{ request.GET.search_events }}».{% else %}Событий пока нет.{% endif %}
-</p>
-{% endfor %}
-
-{% if is_paginated %}
-<nav>
-  <ul class="pagination justify-content-center">
-    {% if page_obj.has_previous %}
-      <li class="page-item"><a class="page-link" href="{% querystring page=1 %}">&laquo;</a></li>
-      <li class="page-item"><a class="page-link" href="{% querystring page=page_obj.previous_page_number %}">‹</a></li>
-    {% endif %}
-
-    {% for num in page_obj.paginator.page_range %}
-      {% if page_obj.number == num %}
-        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
-      {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-        <li class="page-item"><a class="page-link" href="{% querystring page=num %}">{{ num }}</a></li>
+    <div class="col-6 col-md-2 d-flex gap-2">
+      <button class="btn btn-dark flex-fill" type="submit"><i class="bi bi-search me-1"></i>Найти</button>
+      {% if filters_active %}
+      <a class="btn btn-outline-secondary" href="{% url 'main' %}" title="Сбросить фильтры"><i class="bi bi-x-lg"></i></a>
       {% endif %}
-    {% endfor %}
+    </div>
+  </form>
 
-    {% if page_obj.has_next %}
-      <li class="page-item"><a class="page-link" href="{% querystring page=page_obj.next_page_number %}">›</a></li>
-      <li class="page-item"><a class="page-link" href="{% querystring page=page_obj.paginator.num_pages %}">&raquo;</a></li>
+  {% if filters_active %}
+  <p class="text-muted small mb-2">Найдено событий: {{ paginator.count }}</p>
+  {% endif %}
+
+  {% for event in events %}
+  {% with calc=event.calc %}
+  <section class="vd-event {{ event.operation_type }}" id="event-{{ event.id }}">
+    <div class="vd-event-head">
+      <button class="btn btn-sm btn-link text-secondary p-0 vd-collapse-btn" type="button"
+              data-bs-toggle="collapse" data-bs-target="#wagons-{{ event.id }}" aria-expanded="true"
+              title="Свернуть/развернуть">
+        <i class="bi bi-chevron-down fs-5"></i>
+      </button>
+      <div>
+        <div class="vd-event-title">
+          <span class="badge-op {{ event.operation_type }}">{{ event.get_operation_type_display }}</span>
+          <span class="vd-event-date">{{ event.event_date|date:"d.m.Y" }} · {{ event.event_time|time:"H:i" }}</span>
+          <span class="text-muted small">#{{ event.id }}</span>
+        </div>
+        <div class="vd-event-meta mt-1">
+          <span><i class="bi bi-cash-coin me-1"></i>Тариф:
+            {% if calc.tariff is not None %}{{ calc.tariff|floatformat:"2g" }} ₸{% else %}<span class="text-danger">не задан</span>{% endif %}
+          </span>
+          <span><i class="bi bi-boxes me-1"></i>Вагонов: {{ calc.rows|length }}</span>
+          <span><i class="bi bi-rulers me-1"></i>Объём: {{ calc.total_vol|floatformat:"3g" }}</span>
+          {% if calc.skipped_wagons %}
+          <span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Без направления: {{ calc.skipped_wagons }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="vd-event-total">
+        <div class="label">Сумма итого</div>
+        <div class="value num">{% if calc.total_price is not None %}{{ calc.total_price|floatformat:"2g" }} ₸{% else %}—{% endif %}</div>
+      </div>
+      <div class="vd-event-actions">
+        <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addWagonsModal"
+                data-fill='{"event_id": "{{ event.id }}"}'
+                data-title="Вагоны: {{ event.get_operation_type_display }} {{ event.event_date|date:'d.m.Y' }} {{ event.event_time|time:'H:i' }}">
+          <i class="bi bi-plus-lg me-1"></i>Вагоны
+        </button>
+        <button class="btn btn-sm btn-outline-secondary btn-icon" title="Изменить событие"
+                data-bs-toggle="modal" data-bs-target="#editEventModal"
+                data-fill='{"event_id": "{{ event.id }}", "operation_type": "{{ event.operation_type }}", "event_date": "{{ event.event_date|date:'Y-m-d' }}", "event_time": "{{ event.event_time|time:'H:i' }}", "tariff": "{{ event.tariff_id|default_if_none:'' }}", "notes": "{{ event.notes|default_if_none:''|escapejs }}"}'>
+          <i class="bi bi-pencil"></i>
+        </button>
+        <a class="btn btn-sm btn-outline-success btn-icon" href="{% url 'export_event' event.id %}" title="Скачать Excel">
+          <i class="bi bi-file-earmark-excel"></i>
+        </a>
+        <form method="post" action="{% url 'delete_event' event.id %}" class="d-inline"
+              onsubmit="return confirm('Удалить событие {{ event.event_date|date:'d.m.Y' }} {{ event.event_time|time:'H:i' }} вместе со всеми вагонами?')">
+          {% csrf_token %}
+          <button class="btn btn-sm btn-outline-danger btn-icon" type="submit" title="Удалить событие">
+            <i class="bi bi-trash"></i>
+          </button>
+        </form>
+      </div>
+    </div>
+    {% if event.notes %}
+    <div class="vd-event-notes"><i class="bi bi-chat-left-text me-1"></i>{{ event.notes|linebreaksbr }}</div>
     {% endif %}
-  </ul>
-</nav>
-{% endif %}
+
+    <div class="collapse show" id="wagons-{{ event.id }}">
+      <div class="vd-table-wrap">
+        <table class="table vd-table align-middle">
+          <thead>
+          <tr>
+            <th>#</th>
+            <th>Направление</th>
+            <th>№ вагона</th>
+            <th class="num">Протяж. 1</th>
+            <th class="num">Протяж. 2</th>
+            <th class="num">Протяж. 3</th>
+            <th class="num">Объём за вагон</th>
+            <th class="num">Объём за локомотив</th>
+            <th class="num">Итого объём</th>
+            <th class="num">Сумма, ₸</th>
+            <th class="col-actions"></th>
+          </tr>
+          </thead>
+          <tbody>
+          {% for row in calc.rows %}
+          <tr {% if not row.has_destination %}class="row-warning"{% endif %}>
+            <td class="text-muted">{{ forloop.counter }}</td>
+            {% if row.has_destination %}
+            <td>{{ row.wagon.destination.name }}</td>
+            <td class="fw-semibold">{{ row.wagon.wagon_number }}{% if row.wagon.notes %}
+              <i class="bi bi-chat-left-text text-muted ms-1" title="{{ row.wagon.notes }}"></i>{% endif %}</td>
+            <td class="num">{{ row.distance_1|floatformat:3 }}</td>
+            <td class="num {% if not row.distance_2 %}muted-zero{% endif %}">{{ row.distance_2|floatformat:3 }}</td>
+            <td class="num muted-zero">{{ row.distance_3|floatformat:3 }}</td>
+            <td class="num">{{ row.dist_sum|floatformat:3 }}</td>
+            <td class="num">{{ row.vol_per_loko|floatformat:3 }}</td>
+            <td class="num">{{ row.total_vol|floatformat:3 }}</td>
+            <td class="num fw-semibold">{% if row.price is not None %}{{ row.price|floatformat:"2g" }}{% else %}—{% endif %}</td>
+            {% else %}
+            <td class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>нет направления</td>
+            <td class="fw-semibold">{{ row.wagon.wagon_number }}</td>
+            <td colspan="7" class="text-muted small">не учитывается в расчёте — укажите направление</td>
+            {% endif %}
+            <td class="col-actions">
+              <button class="btn btn-sm btn-link text-secondary btn-icon" title="Изменить вагон"
+                      data-bs-toggle="modal" data-bs-target="#editWagonModal"
+                      data-fill='{"wagon_id": "{{ row.wagon.id }}", "wagon_number": "{{ row.wagon.wagon_number|escapejs }}", "destination": "{{ row.wagon.destination_id|default_if_none:'' }}", "notes": "{{ row.wagon.notes|default_if_none:''|escapejs }}"}'>
+                <i class="bi bi-pencil"></i>
+              </button>
+              <form method="post" action="{% url 'delete_wagon' row.wagon.id %}" class="d-inline"
+                    onsubmit="return confirm('Удалить вагон {{ row.wagon.wagon_number|escapejs }}?')">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-link text-danger btn-icon" type="submit" title="Удалить вагон">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="11" class="vd-empty">
+              Вагонов пока нет.
+              <button class="btn btn-sm btn-link" data-bs-toggle="modal" data-bs-target="#addWagonsModal"
+                      data-fill='{"event_id": "{{ event.id }}"}'>Добавить</button>
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+          {% if calc.rows %}
+          <tfoot>
+          <tr>
+            <td colspan="8">Итого</td>
+            <td class="num">{{ calc.total_vol|floatformat:3 }}</td>
+            <td class="num">{% if calc.total_price is not None %}{{ calc.total_price|floatformat:"2g" }}{% else %}—{% endif %}</td>
+            <td></td>
+          </tr>
+          </tfoot>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endwith %}
+  {% empty %}
+  <div class="text-center text-muted py-5">
+    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+    {% if filters_active %}По заданным фильтрам ничего не найдено.{% else %}Событий пока нет — добавьте первое.{% endif %}
+  </div>
+  {% endfor %}
+
+  {% if is_paginated %}
+  <nav class="mt-3">
+    <ul class="pagination justify-content-center flex-wrap">
+      {% if page_obj.has_previous %}
+        <li class="page-item"><a class="page-link" href="{% querystring page=1 %}">&laquo;</a></li>
+        <li class="page-item"><a class="page-link" href="{% querystring page=page_obj.previous_page_number %}">‹</a></li>
+      {% endif %}
+      {% for num in page_obj.paginator.page_range %}
+        {% if page_obj.number == num %}
+          <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+          <li class="page-item"><a class="page-link" href="{% querystring page=num %}">{{ num }}</a></li>
+        {% endif %}
+      {% endfor %}
+      {% if page_obj.has_next %}
+        <li class="page-item"><a class="page-link" href="{% querystring page=page_obj.next_page_number %}">›</a></li>
+        <li class="page-item"><a class="page-link" href="{% querystring page=page_obj.paginator.num_pages %}">&raquo;</a></li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+</div>
+
+{% url 'main' as main_url %}
+{% include "main/_modal_form.html" with modal_id="addEventModal" title="Новое событие" action=main_url action_type="add_event" form=add_event_form submit="Добавить" %}
+{% include "main/_modal_form.html" with modal_id="editEventModal" title="Изменить событие" action=main_url action_type="edit_event" form=edit_event_form id_field="event_id" %}
+{% include "main/_modal_form.html" with modal_id="addWagonsModal" title="Добавить вагоны" action=main_url action_type="add_wagon" form=add_wagons_form id_field="event_id" submit="Добавить" %}
+{% include "main/_modal_form.html" with modal_id="editWagonModal" title="Изменить вагон" action=main_url action_type="edit_wagon" form=edit_wagon_form id_field="wagon_id" %}
+{% include "main/_reference_modals.html" %}
+
+<div class="modal fade" id="exportPeriodModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="get" action="{% url 'export_period' %}">
+      <div class="modal-header">
+        <h5 class="modal-title">Экспорт в Excel за период</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2 mb-3">
+          <div class="col">
+            <label class="form-label" for="exp-start">С</label>
+            <input class="form-control" id="exp-start" type="date" name="start_date" value="{% now 'Y-m-01' %}" required>
+          </div>
+          <div class="col">
+            <label class="form-label" for="exp-end">По</label>
+            <input class="form-control" id="exp-end" type="date" name="end_date" value="{% now 'Y-m-d' %}" required>
+          </div>
+        </div>
+        <label class="form-label" for="exp-op">Операция</label>
+        <select class="form-select" id="exp-op" name="operation_type">
+          <option value="">Все операции</option>
+          <option value="arrival">Пригон</option>
+          <option value="removal">Уборка</option>
+        </select>
+        <div class="form-text">Каждое событие — отдельный лист в файле.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-success"><i class="bi bi-download me-1"></i>Скачать</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}

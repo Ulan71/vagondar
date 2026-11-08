@@ -83,7 +83,7 @@ class TariffAutoSelectTests(BaseData):
 
 class AccessTests(BaseData):
     def test_pages_require_login(self):
-        for url in [reverse("main"), reverse("tariff_history"), reverse("profile"),
+        for url in [reverse("main"), reverse("references"), reverse("profile"),
                     reverse("export_event", args=[self.event.pk]), reverse("export_period")]:
             response = self.client.get(url)
             self.assertEqual(response.status_code, 302, url)
@@ -149,12 +149,12 @@ class MainPageTests(BaseData):
 
     def test_add_wagon_to_missing_event(self):
         response = self.client.post(reverse("main"), {"action_type": "add_wagon", "event_id": "",
-                                                      "wagon_number": "1", "destination": self.near.pk})
+                                                      "wagon_numbers": "1", "destination": self.near.pk})
         self.assertEqual(response.status_code, 404)
 
     def test_add_and_edit_wagon(self):
         self.client.post(reverse("main"), {"action_type": "add_wagon", "event_id": self.event.pk,
-                                           "wagon_number": "444", "destination": self.near.pk})
+                                           "wagon_numbers": "444", "destination": self.near.pk})
         wagon = Wagon.objects.get(wagon_number="444")
         self.assertEqual(wagon.event, self.event)
         self.client.post(reverse("main"), {"action_type": "edit_wagon", "wagon_id": wagon.pk,
@@ -162,9 +162,33 @@ class MainPageTests(BaseData):
         wagon.refresh_from_db()
         self.assertEqual((wagon.wagon_number, wagon.destination, wagon.event), ("445", self.far, self.event))
 
-    def test_negative_distance_rejected(self):
-        self.client.post(reverse("main"), {"action_type": "add_destination", "name": "X", "distance_km": "-1"})
-        self.assertFalse(Destination.objects.filter(name="X").exists())
+    def test_add_many_wagons(self):
+        response = self.client.post(reverse("main"), {
+            "action_type": "add_wagon", "event_id": self.event.pk,
+            "wagon_numbers": "501\n502, 503;  504 ", "destination": self.far.pk}, follow=True)
+        self.assertContains(response, "Добавлено вагонов: 4")
+        self.assertEqual(list(self.event.wagons.values_list("wagon_number", flat=True)),
+                         ["111", "222", "501", "502", "503", "504"])
+
+    def test_add_wagons_rejects_too_long_number(self):
+        self.client.post(reverse("main"), {"action_type": "add_wagon", "event_id": self.event.pk,
+                                           "wagon_numbers": "1 " + "9" * 21, "destination": self.far.pk})
+        self.assertEqual(self.event.wagons.count(), 2)
+
+    def test_filters(self):
+        removal = TrainEvent.objects.create(operation_type="removal", event_date=date(2025, 9, 5),
+                                            event_time=time(8, 0), tariff=self.tariff)
+        events = lambda **p: list(self.client.get(reverse("main"), p).context["events"])
+        self.assertEqual(events(op="removal"), [removal])
+        self.assertEqual(events(op="arrival"), [self.event])
+        self.assertEqual(events(date_from="2025-09-01"), [removal])
+        self.assertEqual(events(date_to="2025-08-31"), [self.event])
+
+    def test_edit_forms_are_rendered_with_unique_ids(self):
+        html = self.client.get(reverse("main")).content.decode()
+        self.assertIn('id="add_event_event_date"', html)
+        self.assertIn('id="edit_event_event_date"', html)
+        self.assertNotIn('id="id_event_date"', html)
 
     def test_delete_event(self):
         self.client.post(reverse("delete_event", args=[self.event.pk]))
@@ -209,3 +233,48 @@ class ExcelExportTests(BaseData):
     def test_period_without_dates(self):
         response = self.client.get(reverse("export_period"), follow=True)
         self.assertContains(response, "Укажите")
+
+
+class ReferencesTests(BaseData):
+    def setUp(self):
+        self.login()
+
+    def post(self, **data):
+        return self.client.post(reverse("references"), data, follow=True)
+
+    def test_page(self):
+        response = self.client.get(reverse("references"))
+        self.assertContains(response, "Дальний")
+        self.assertContains(response, "текущий")
+
+    def test_add_and_edit_destination(self):
+        self.post(action_type="add_destination", name="Новый", distance_km="1.2345")
+        dest = Destination.objects.get(name="Новый")
+        self.post(action_type="edit_destination", object_id=dest.pk, name="Новый 2", distance_km="2")
+        dest.refresh_from_db()
+        self.assertEqual((dest.name, dest.distance_km), ("Новый 2", Decimal("2")))
+
+    def test_negative_distance_rejected(self):
+        self.post(action_type="add_destination", name="X", distance_km="-1")
+        self.assertFalse(Destination.objects.filter(name="X").exists())
+
+    def test_cannot_delete_used(self):
+        response = self.post(action_type="delete_destination", object_id=self.near.pk)
+        self.assertContains(response, "Нельзя удалить")
+        self.assertTrue(Destination.objects.filter(pk=self.near.pk).exists())
+        self.post(action_type="delete_tariff", object_id=self.tariff.pk)
+        self.assertTrue(TariffHistory.objects.filter(pk=self.tariff.pk).exists())
+
+    def test_delete_unused(self):
+        unused = Destination.objects.create(name="Пусто", distance_km=1)
+        self.post(action_type="delete_destination", object_id=unused.pk)
+        self.assertFalse(Destination.objects.filter(pk=unused.pk).exists())
+        self.post(action_type="delete_tariff", object_id=self.tariff_old.pk)
+        self.assertFalse(TariffHistory.objects.filter(pk=self.tariff_old.pk).exists())
+
+    def test_add_tariff(self):
+        self.post(action_type="add_tariff", start_date="2026-01-01", tariff="20000")
+        self.assertTrue(TariffHistory.objects.filter(tariff=20000).exists())
+
+    def test_bad_action(self):
+        self.assertEqual(self.post(action_type="drop_tables").status_code, 200)

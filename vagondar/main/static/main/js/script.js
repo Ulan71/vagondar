@@ -1,60 +1,49 @@
-function openModal(modalId, eventId) {
-const modal = document.getElementById(modalId);
-modal.style.display = 'flex';
-modal.querySelector('input[name="event_id"]').value = eventId;
-modal.querySelector('input[name="action_type"]').value = "add_wagon";
-}
+// VagonDar — поведение интерфейса
 
-function closeModal(id) {
-document.getElementById(id).style.display = 'none';
-}
+// Модальные окна: перед открытием сбрасываем форму и заполняем её из data-fill кнопки
+document.addEventListener("show.bs.modal", (e) => {
+  const modal = e.target;
+  const trigger = e.relatedTarget;
+  const form = modal.querySelector("form");
+  if (!form || !trigger) return;
 
-function openAddEvent() {
-const modal = document.getElementById("addEvent");
-modal.style.display = 'flex'
-modal.querySelector('input[name="action_type"]').value = "add_event";
-}
+  if (form.method.toLowerCase() === "post") form.reset();
 
-function openAddDestination() {
-const modal = document.getElementById("addDestination");
-modal.style.display = "flex"
-modal.querySelector('input[name="action_type"]').value = "add_destination";
-}
+  const title = modal.querySelector(".modal-title");
+  if (title) {
+    title.dataset.default ??= title.textContent;
+    title.textContent = trigger.dataset.title || title.dataset.default;
+  }
 
-function openAddTariff() {
-const modal = document.getElementById("addTariff");
-modal.style.display = "flex"
-modal.querySelector('input[name="action_type"]').value = "add_tariff";
-}
+  if (trigger.dataset.fill) {
+    const data = JSON.parse(trigger.dataset.fill);
+    for (const [name, value] of Object.entries(data)) {
+      const field = form.elements.namedItem(name);
+      if (field) field.value = value ?? "";
+    }
+  }
+});
 
-function openEditEvent(eventId) {
-const modal = document.getElementById("editEvent");
-modal.style.display = "flex";
-modal.querySelector('input[name="event_id"]').value = eventId;
-modal.querySelector('input[name="action_type"]').value = "edit_event";
-}
+// Фокус на первое поле после открытия
+document.addEventListener("shown.bs.modal", (e) => {
+  const field = e.target.querySelector(".modal-body input:not([type=hidden]), .modal-body select, .modal-body textarea");
+  if (field) field.focus();
+});
 
-function openEditWagon(wagonId) {
-const modal = document.getElementById("editWagon");
-modal.style.display = "flex";
-modal.querySelector('input[name="wagon_id"]').value = wagonId;
-modal.querySelector('input[name="action_type"]').value = "edit_wagon";
-}
+// Уведомления
+document.querySelectorAll(".toast").forEach((el) => bootstrap.Toast.getOrCreateInstance(el).show());
 
-function exportExcelByConfig() {
-const modal = document.getElementById("exportExcelDate");
-modal.style.display = "flex";
-}
-
-
-window.addEventListener("beforeunload", function () {
-        localStorage.setItem("scrollPosition", window.scrollY);
-    });
-
-    window.addEventListener("load", function () {
-        let scrollPos = localStorage.getItem("scrollPosition");
-        if (scrollPos) {
-            window.scrollTo(0, parseInt(scrollPos));
-            localStorage.removeItem("scrollPosition"); // Если надо сбросить после восстановления
-        }
-    });
+// Возврат к той же позиции прокрутки после сохранения/удаления
+const scrollKey = "scroll:" + location.pathname + location.search;
+window.addEventListener("beforeunload", () => {
+  try { sessionStorage.setItem(scrollKey, String(window.scrollY)); } catch (_) {}
+});
+window.addEventListener("load", () => {
+  try {
+    const pos = sessionStorage.getItem(scrollKey);
+    if (pos) {
+      window.scrollTo(0, parseInt(pos, 10));
+      sessionStorage.removeItem(scrollKey);
+    }
+  } catch (_) {}
+});

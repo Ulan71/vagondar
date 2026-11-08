@@ -1,15 +1,27 @@
 {% extends 'main/layout.html' %}
-{% load static %}
 
-{% block head %}
-<link rel="stylesheet" href="{% static 'main/css/index.css' %}">
-{% endblock %}
+{% block title %}Профиль — VagonDar{% endblock %}
 
 {% block content %}
-<div class="container my-4">
-    <h1>{{ user.username }}</h1>
+<div class="container-xl py-3" style="max-width: 640px">
+  <div class="card">
+    <div class="card-body">
+      <h1 class="h4"><i class="bi bi-person-circle me-2"></i>{{ user.username }}</h1>
+      <dl class="row mb-0 small">
+        <dt class="col-5 text-muted fw-normal">Последний вход</dt>
+        <dd class="col-7">{{ user.last_login|date:"d.m.Y H:i"|default:"—" }}</dd>
+        <dt class="col-5 text-muted fw-normal">Роль</dt>
+        <dd class="col-7">{% if user.is_superuser %}Администратор{% elif user.is_staff %}Сотрудник{% else %}Пользователь{% endif %}</dd>
+      </dl>
+    </div>
     {% if user.is_staff %}
-    <a class="btn btn-outline-secondary" href="{% url 'download_db' %}">Скачать резервную копию данных (JSON)</a>
+    <div class="card-footer bg-white">
+      <a class="btn btn-outline-secondary" href="{% url 'download_db' %}">
+        <i class="bi bi-download me-1"></i>Скачать резервную копию данных (JSON)
+      </a>
+      <div class="form-text">Все события, вагоны, направления, тарифы и пользователи.</div>
+    </div>
     {% endif %}
+  </div>
 </div>
 {% endblock %}

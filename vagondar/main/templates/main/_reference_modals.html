@@ -1,0 +1,5 @@
+{% url 'references' as references_url %}
+{% include "main/_modal_form.html" with modal_id="addDestinationModal" title="Новое направление" action=references_url action_type="add_destination" form=add_destination_form submit="Добавить" %}
+{% include "main/_modal_form.html" with modal_id="editDestinationModal" title="Изменить направление" action=references_url action_type="edit_destination" form=edit_destination_form id_field="object_id" warning="Изменение расстояния пересчитает все события, где есть это направление, включая прошлые." %}
+{% include "main/_modal_form.html" with modal_id="addTariffModal" title="Новый тариф" action=references_url action_type="add_tariff" form=add_tariff_form submit="Добавить" %}
+{% include "main/_modal_form.html" with modal_id="editTariffModal" title="Изменить тариф" action=references_url action_type="edit_tariff" form=edit_tariff_form id_field="object_id" warning="Изменение суммы пересчитает все события с этим тарифом. Если тариф поменялся — лучше добавьте новый с новой датой." %}

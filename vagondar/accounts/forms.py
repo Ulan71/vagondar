@@ -4,11 +4,11 @@ from django.contrib.auth.forms import AuthenticationForm
 
 class CustomLoginForm(AuthenticationForm):
     username = forms.CharField(widget=forms.TextInput(attrs={
-        'class': 'login-inp',
+        'class': 'form-control',
         'placeholder': 'Имя пользователя',
         'autofocus': True,
     }))
     password = forms.CharField(widget=forms.PasswordInput(attrs={
-        'class': 'password-inp',
+        'class': 'form-control',
         'placeholder': 'Пароль',
     }))

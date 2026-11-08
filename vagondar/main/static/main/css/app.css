@@ -1,0 +1,229 @@
+/* VagonDar — общие стили поверх Bootstrap 5 */
+
+:root {
+  --vd-bg: #f3f5f8;
+  --vd-surface: #ffffff;
+  --vd-border: #e3e7ee;
+  --vd-muted: #6b7280;
+  --vd-nav: #1f2a37;
+  --vd-arrival: #15803d;
+  --vd-arrival-bg: #dcfce7;
+  --vd-removal: #b45309;
+  --vd-removal-bg: #fef3c7;
+}
+
+body {
+  background: var(--vd-bg);
+  color: #1f2937;
+  min-height: 100vh;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* --- Навигация --- */
+.vd-navbar {
+  background: var(--vd-nav);
+}
+.vd-navbar .navbar-brand {
+  font-weight: 700;
+  letter-spacing: .3px;
+}
+.vd-navbar .nav-link.active {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* --- Панель инструментов и фильтры --- */
+.vd-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+}
+.vd-toolbar h1 {
+  font-size: 1.5rem;
+  margin: 0 auto 0 0;
+}
+.vd-filters {
+  background: var(--vd-surface);
+  border: 1px solid var(--vd-border);
+  border-radius: .75rem;
+  padding: .75rem;
+}
+
+/* --- Карточка события --- */
+.vd-event {
+  background: var(--vd-surface);
+  border: 1px solid var(--vd-border);
+  border-left: 5px solid var(--vd-arrival);
+  border-radius: .75rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+}
+.vd-event.removal {
+  border-left-color: var(--vd-removal);
+}
+.vd-event-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem 1.5rem;
+  align-items: center;
+  padding: .85rem 1rem;
+}
+.vd-event-title {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.vd-event-date {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.vd-event-meta {
+  color: var(--vd-muted);
+  font-size: .9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem 1rem;
+}
+.vd-event-total {
+  margin-left: auto;
+  text-align: right;
+  line-height: 1.15;
+}
+.vd-event-total .label {
+  color: var(--vd-muted);
+  font-size: .8rem;
+}
+.vd-event-total .value {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+.vd-event-actions {
+  display: flex;
+  gap: .35rem;
+  align-items: center;
+}
+.vd-event-notes {
+  padding: 0 1rem .75rem;
+  color: var(--vd-muted);
+  font-size: .9rem;
+}
+.vd-collapse-btn .bi {
+  transition: transform .2s;
+}
+.vd-collapse-btn.collapsed .bi {
+  transform: rotate(-90deg);
+}
+
+.badge-op {
+  font-weight: 600;
+  font-size: .8rem;
+  padding: .35em .65em;
+  border-radius: 999px;
+}
+.badge-op.arrival {
+  color: var(--vd-arrival);
+  background: var(--vd-arrival-bg);
+}
+.badge-op.removal {
+  color: var(--vd-removal);
+  background: var(--vd-removal-bg);
+}
+
+/* --- Таблица вагонов --- */
+.vd-table-wrap {
+  overflow-x: auto;
+  border-top: 1px solid var(--vd-border);
+}
+.vd-table {
+  margin: 0;
+  font-size: .9rem;
+  min-width: 860px;
+}
+.vd-table thead th {
+  background: #f8fafc;
+  color: var(--vd-muted);
+  font-weight: 600;
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.vd-table td, .vd-table th {
+  padding: .45rem .6rem;
+}
+.vd-table tbody tr:hover {
+  background: #f5f9ff;
+}
+.vd-table tfoot td {
+  background: #f8fafc;
+  font-weight: 700;
+  border-bottom: 0;
+}
+.vd-table .col-actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+.vd-table .muted-zero {
+  color: #b6bcc6;
+}
+.vd-table .row-warning td {
+  background: #fff5f5;
+}
+.vd-empty {
+  text-align: center;
+  color: var(--vd-muted);
+  padding: 1rem;
+}
+
+.btn-icon {
+  --bs-btn-padding-x: .45rem;
+  --bs-btn-padding-y: .2rem;
+  line-height: 1;
+}
+
+/* --- Уведомления --- */
+.vd-toasts {
+  position: fixed;
+  top: 4.25rem;
+  right: 1rem;
+  z-index: 1090;
+  width: min(380px, calc(100vw - 2rem));
+}
+
+/* --- Страница входа --- */
+.vd-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: linear-gradient(rgba(15, 23, 42, .55), rgba(15, 23, 42, .55)),
+              url('../../accounts/img/bg_image.jpg') center / cover no-repeat;
+}
+.vd-login-card {
+  width: 100%;
+  max-width: 380px;
+  border: 0;
+  border-radius: 1rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .35);
+}
+
+@media (max-width: 575.98px) {
+  .vd-event-total {
+    margin-left: 0;
+    text-align: left;
+  }
+  .vd-event-actions {
+    width: 100%;
+  }
+}

@@ -8,5 +8,5 @@ urlpatterns = [
     path('delete_event/<int:pk>/', views.DeleteEventView.as_view(), name="delete_event"),
     path('export/event/<int:pk>/', views.ExportEventView.as_view(), name="export_event"),
     path('export/period/', views.ExportPeriodView.as_view(), name="export_period"),
-    path('tariff_history/', views.TariffHistoryViews.as_view(), name="tariff_history"),
+    path('references/', views.ReferencesView.as_view(), name="references"),
 ]

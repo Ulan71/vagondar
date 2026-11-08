@@ -2,17 +2,18 @@ from datetime import datetime
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Prefetch, Q
+from django.db.models import Count, Prefetch, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
-from django.views.generic import ListView
+from django.views.generic import ListView, TemplateView
 
 from . import forms
 from .calculations import calculate_event
 from .excel import XLSX_CONTENT_TYPE, build_workbook
-from .models import TariffHistory, TrainEvent, Wagon
+from .models import Destination, TariffHistory, TrainEvent, Wagon
 
 
 def events_queryset():
@@ -60,24 +61,34 @@ class MainViews(LoginRequiredMixin, ListView):
     # action_type -> (класс формы, сообщение об успехе)
     CREATE_ACTIONS = {
         "add_event": (forms.AddEventForm, "Событие добавлено"),
-        "add_destination": (forms.AddDestinationForm, "Направление добавлено"),
-        "add_tariff": (forms.AddTariffForm, "Тариф добавлен"),
     }
 
     def get_queryset(self):
         qs = events_queryset()
-        query = (self.request.GET.get("search_events") or "").strip()
-        if not query:
-            return qs
+        params = self.request.GET
 
-        found_date = parse_date(query)
-        if found_date:
-            return qs.filter(event_date=found_date)
+        operation = params.get("op", "")
+        if operation in dict(TrainEvent.OPERATION_CHOICES):
+            qs = qs.filter(operation_type=operation)
 
-        condition = Q(wagons__wagon_number__icontains=query)
-        if query.isdigit():
-            condition |= Q(id=int(query))
-        return qs.filter(condition).distinct()
+        date_from = parse_date(params.get("date_from", ""))
+        date_to = parse_date(params.get("date_to", ""))
+        if date_from:
+            qs = qs.filter(event_date__gte=date_from)
+        if date_to:
+            qs = qs.filter(event_date__lte=date_to)
+
+        query = (params.get("search_events") or "").strip()
+        if query:
+            found_date = parse_date(query)
+            if found_date:
+                qs = qs.filter(event_date=found_date)
+            else:
+                condition = Q(wagons__wagon_number__icontains=query)
+                if query.isdigit():
+                    condition |= Q(id=int(query))
+                qs = qs.filter(condition).distinct()
+        return qs
 
     def paginate_queryset(self, queryset, page_size):
         # get_page() вместо page(): несуществующая страница -> последняя, а не 404
@@ -87,11 +98,14 @@ class MainViews(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["add_wagon_form"] = forms.AddWagonForm()
-        context["add_event_form"] = forms.AddEventForm()
-        context["add_destination_form"] = forms.AddDestinationForm()
-        context["add_tariff_form"] = forms.AddTariffForm()
-        context["show_actions"] = True
+        # auto_id разный, чтобы id полей в формах добавления и редактирования не совпадали
+        context["add_wagons_form"] = forms.AddWagonsForm(auto_id="add_wagon_%s")
+        context["edit_wagon_form"] = forms.AddWagonForm(auto_id="edit_wagon_%s")
+        context["add_event_form"] = forms.AddEventForm(auto_id="add_event_%s")
+        context["edit_event_form"] = forms.AddEventForm(auto_id="edit_event_%s")
+        context.update(reference_forms())
+        context["filters_active"] = any(
+            self.request.GET.get(k) for k in ("search_events", "op", "date_from", "date_to"))
         for event in context["events"]:
             event.calc = calculate_event(event, list(event.wagons.all()))
         return context
@@ -109,9 +123,13 @@ class MainViews(LoginRequiredMixin, ListView):
 
         if action == "add_wagon":
             event = get_object_or_404(TrainEvent, pk=request.POST.get("event_id") or 0)
-            form = forms.AddWagonForm(request.POST)
-            form.instance.event = event
-            return self._save(form, "Вагон добавлен")
+            form = forms.AddWagonsForm(request.POST)
+            if form.is_valid():
+                count = len(form.save(event))
+                messages.success(request, f"Добавлено вагонов: {count}")
+            else:
+                messages.error(request, f"Не сохранено. {form_errors_text(form)}")
+            return redirect_back(request)
 
         if action in self.CREATE_ACTIONS:
             form_class, success = self.CREATE_ACTIONS[action]
@@ -121,12 +139,25 @@ class MainViews(LoginRequiredMixin, ListView):
         return redirect_back(request)
 
     def _save(self, form, success_message):
-        if form.is_valid():
-            form.save()
-            messages.success(self.request, success_message)
-        else:
-            messages.error(self.request, f"Не сохранено. {form_errors_text(form)}")
-        return redirect_back(self.request)
+        return save_form(self.request, form, success_message)
+
+
+def save_form(request, form, success_message):
+    if form.is_valid():
+        form.save()
+        messages.success(request, success_message)
+    else:
+        messages.error(request, f"Не сохранено. {form_errors_text(form)}")
+    return redirect_back(request)
+
+
+def reference_forms():
+    return {
+        "add_destination_form": forms.AddDestinationForm(auto_id="add_destination_%s"),
+        "edit_destination_form": forms.AddDestinationForm(auto_id="edit_destination_%s"),
+        "add_tariff_form": forms.AddTariffForm(auto_id="add_tariff_%s"),
+        "edit_tariff_form": forms.AddTariffForm(auto_id="edit_tariff_%s"),
+    }
 
 
 def xlsx_response(content, filename):
@@ -167,12 +198,46 @@ class ExportPeriodView(LoginRequiredMixin, View):
         return xlsx_response(build_workbook(events), filename)
 
 
-class TariffHistoryViews(LoginRequiredMixin, ListView):
-    template_name = "main/tariff_history_page.html"
-    context_object_name = "tariffs"
+class ReferencesView(LoginRequiredMixin, TemplateView):
+    """Справочники: направления и тарифы."""
+    template_name = "main/references.html"
 
-    def get_queryset(self):
-        return TariffHistory.objects.order_by("-start_date")
+    MODELS = {
+        "destination": (Destination, forms.AddDestinationForm, "Направление", "wagon"),
+        "tariff": (TariffHistory, forms.AddTariffForm, "Тариф", "trainevent"),
+    }
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["destinations"] = Destination.objects.annotate(used=Count("wagon")).order_by("name")
+        context["tariffs"] = TariffHistory.objects.annotate(used=Count("trainevent")).order_by("-start_date")
+        current = TariffHistory.for_date(timezone.localdate())
+        context["current_tariff_id"] = current.pk if current else None
+        context.update(reference_forms())
+        return context
+
+    def post(self, request, *args, **kwargs):
+        # action_type вида "add_destination", "edit_tariff", "delete_destination"...
+        verb, _, kind = (request.POST.get("action_type") or "").partition("_")
+        if kind not in self.MODELS or verb not in ("add", "edit", "delete"):
+            messages.error(request, "Неизвестное действие.")
+            return redirect_back(request, "references")
+
+        model, form_class, title, relation = self.MODELS[kind]
+        if verb == "add":
+            return save_form(request, form_class(request.POST), f"{title} добавлен{'о' if kind == 'destination' else ''}")
+
+        obj = get_object_or_404(model, pk=request.POST.get("object_id") or 0)
+        if verb == "edit":
+            return save_form(request, form_class(request.POST, instance=obj), f"{title}: изменения сохранены")
+
+        used = getattr(obj, f"{relation}_set").count()
+        if used:
+            messages.error(request, f"Нельзя удалить «{obj}»: используется в {used} записях.")
+        else:
+            obj.delete()
+            messages.success(request, f"{title} удалён{'о' if kind == 'destination' else ''}")
+        return redirect_back(request, "references")
 
 
 class DeleteWagonView(LoginRequiredMixin, View):

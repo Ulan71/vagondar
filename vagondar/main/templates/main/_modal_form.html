@@ -1,0 +1,38 @@
+{% comment %}
+Модальное окно с формой.
+Параметры: modal_id, title, action, action_type, form, submit, id_field (имя скрытого поля с id объекта),
+           warning (необязательный текст предупреждения)
+Кнопка, открывающая окно: data-bs-toggle="modal" data-bs-target="#{{ modal_id }}"
+  data-fill='{"поле": "значение"}' — заполнить поля формы, data-title — заменить заголовок.
+{% endcomment %}
+<div class="modal fade" id="{{ modal_id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ action }}">
+      {% csrf_token %}
+      <input type="hidden" name="action_type" value="{{ action_type }}">
+      {% if id_field %}<input type="hidden" name="{{ id_field }}" value="">{% endif %}
+      <div class="modal-header">
+        <h5 class="modal-title">{{ title }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        {% if warning %}
+        <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle me-1"></i>{{ warning }}</div>
+        {% endif %}
+        {% for field in form %}
+        <div class="mb-3">
+          <label class="form-label" for="{{ field.id_for_label }}">
+            {{ field.label }}{% if not field.field.required %} <span class="text-muted small">(необязательно)</span>{% endif %}
+          </label>
+          {{ field }}
+          {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">{{ submit|default:"Сохранить" }}</button>
+      </div>
+    </form>
+  </div>
+</div>

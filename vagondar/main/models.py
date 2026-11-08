@@ -17,7 +17,8 @@ class TariffHistory(models.Model):
     tariff = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):
-        return f"{self.tariff} ₸ | {self.start_date}"
+        amount = f"{self.tariff:,.2f}".replace(",", " ").replace(".", ",")
+        return f"{amount} ₸ с {self.start_date:%d.%m.%Y}"
 
     @classmethod
     def for_date(cls, date):

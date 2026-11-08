@@ -42,6 +42,8 @@ python manage.py runserver
 
 ## Перенос данных SQLite → PostgreSQL
 
+Сначала добавить в `requirements.txt` строку `psycopg[binary]==3.3.8`.
+
 `-X utf8` обязателен на Windows, иначе кириллица в файле сломается.
 
 ```bash
