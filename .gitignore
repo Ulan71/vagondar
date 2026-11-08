@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Django
+vagondar/staticfiles/
+vagondar/media/
+
+# Секреты и резервные копии
+.env
+*.backup.*
+vagondar_backup_*.json
+
+# PyCharm (личные настройки)
+.idea/workspace.xml
+.idea/shelf/
+.idea/dataSources*

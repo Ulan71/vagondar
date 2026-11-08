@@ -27,12 +27,6 @@ modal.style.display = "flex"
 modal.querySelector('input[name="action_type"]').value = "add_tariff";
 }
 
-function openExportToExcel(eventId) {
-const modal = document.getElementById("exportExcel");
-modal.style.display = "flex"
-modal.querySelector('input[name="event_id"]').value = eventId;
-}
-
 function openEditEvent(eventId) {
 const modal = document.getElementById("editEvent");
 modal.style.display = "flex";
@@ -47,7 +41,7 @@ modal.querySelector('input[name="wagon_id"]').value = wagonId;
 modal.querySelector('input[name="action_type"]').value = "edit_wagon";
 }
 
-function exportExcelByConfig(wagonId) {
+function exportExcelByConfig() {
 const modal = document.getElementById("exportExcelDate");
 modal.style.display = "flex";
 }

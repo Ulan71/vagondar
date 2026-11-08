@@ -1,10 +1,11 @@
 {% extends 'main/layout.html' %}
 {% load static %}
 
-{% block content %}
-
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+{% block head %}
 <link rel="stylesheet" href="{% static 'main/css/index.css' %}">
+{% endblock %}
+
+{% block content %}
 
 <div id="addWagon" class="modal">
     <div class="modal-content">
@@ -17,8 +18,8 @@
             {{ add_wagon_form.destination }}
             <p>Заметка</p>
             {{ add_wagon_form.notes }}
-            <input type="hidden" name="event_id" id="id_event_id" value="">
-            <input type="hidden" name="action_type" value="">
+            <input type="hidden" name="event_id" value="">
+            <input type="hidden" name="action_type" value="add_wagon">
             <br>
             <button class="btn btn-success">Добавить</button>
         </form>
@@ -33,11 +34,11 @@
             {% csrf_token %}
             <p>Название предприятия:</p>
             {{ add_destination_form.name }}
-            <p>Расстояние:</p>
+            <p>Расстояние, км:</p>
             {{ add_destination_form.distance_km }}
             <br>
             <br>
-            <input type="hidden" name="action_type" value="">
+            <input type="hidden" name="action_type" value="add_destination">
             <button class="btn btn-success">Добавить</button>
         </form>
         <button class="btn btn-danger" onclick="closeModal('addDestination')">Закрыть</button>
@@ -61,7 +62,7 @@
             {{ add_event_form.notes }}
             <br>
             <br>
-            <input type="hidden" name="action_type" value="">
+            <input type="hidden" name="action_type" value="add_event">
             <button class="btn btn-success">Добавить</button>
         </form>
         <button class="btn btn-danger" onclick="closeModal('addEvent')">Закрыть</button>
@@ -75,7 +76,7 @@
             {% csrf_token %}
             {{ add_event_form.as_p }}
             <input type="hidden" name="action_type" value="edit_event">
-            <input type="hidden" name="event_id" id="editEventId">
+            <input type="hidden" name="event_id" value="">
             <button class="btn btn-success">Сохранить</button>
         </form>
         <button class="btn btn-danger" onclick="closeModal('editEvent')">Закрыть</button>
@@ -88,7 +89,7 @@
         <form action="{% url 'main' %}" method="post" style="margin: 5px">
             {% csrf_token %}
             {{ add_tariff_form.as_p }}
-            <input type="hidden" name="action_type" value="">
+            <input type="hidden" name="action_type" value="add_tariff">
             <button class="btn btn-success">Добавить</button>
         </form>
         <button class="btn btn-danger" onclick="closeModal('addTariff')">Закрыть</button>
@@ -102,44 +103,27 @@
             {% csrf_token %}
             {{ add_wagon_form.as_p }}
             <input type="hidden" name="action_type" value="edit_wagon">
-            <input type="hidden" name="wagon_id" id="editWagonId">
+            <input type="hidden" name="wagon_id" value="">
             <button class="btn btn-success">Сохранить</button>
         </form>
         <button class="btn btn-danger" onclick="closeModal('editWagon')">Закрыть</button>
     </div>
 </div>
 
-<div id="exportExcel" class="modal">
-    <div class="modal-content">
-        <h1>Экспорт в excel:</h1>
-        <form action="{% url 'main' %}" method="get" style="margin: 5px">
-            {% csrf_token %}
-            <input type="hidden" name="export" value="1">
-            <input type="hidden" name="event_id" value="">
-            <button class="btn btn-success">Экспортировать событие в Excel</button>
-            <br>
-            <br>
-        </form>
-        <button class="btn btn-danger" onclick="closeModal('exportExcel')">Закрыть</button>
-    </div>
-</div>
-
-
 <div id="exportExcelDate" class="modal">
     <div class="modal-content">
-        <h1>Экспорт в excel:</h1>
-        <form action="{% url 'main' %}" method="get" style="margin: 5px">
-            {% csrf_token %}
-            <input type="hidden" name="export" value="2">
-            <input type="date" name="start_date">
-            <input type="date" name="end_date">
-            <select name="operation_type">
-                <option value="arrival">Пригон</option>
-                <option value="removal">Уборка</option>
-            </select>
-            <br>
-            <br>
-            <button class="btn btn-success">Экспортировать событие в Excel</button>
+        <h1>Экспорт в Excel за период:</h1>
+        <form action="{% url 'export_period' %}" method="get" style="margin: 5px">
+            <p>С: <input type="date" name="start_date" required></p>
+            <p>По: <input type="date" name="end_date" required></p>
+            <p>
+                <select name="operation_type">
+                    <option value="">Все операции</option>
+                    <option value="arrival">Пригон</option>
+                    <option value="removal">Уборка</option>
+                </select>
+            </p>
+            <button class="btn btn-success">Экспортировать</button>
         </form>
         <button class="btn btn-danger" onclick="closeModal('exportExcelDate')">Закрыть</button>
     </div>
@@ -149,17 +133,19 @@
 <div class="card my-3">
     <div class="card-header">
         <div>
-            {% if event.operation_type == "arrival" %}
-            <strong>Тип операции:</strong> Пригон<br>
-            {% elif event.operation_type == "removal" %}
-            <strong>Тип операции:</strong> Уборка<br>
+            <strong>Тип операции:</strong> {{ event.get_operation_type_display }}<br>
+            <strong>Тариф:</strong>
+            {% if event.calc.tariff is not None %}{{ event.calc.tariff }} ₸{% else %}<span class="text-danger">не задан</span>{% endif %}<br>
+            <strong>Дата:</strong> {{ event.event_date|date:"d.m.Y" }} <br>
+            <strong>Время:</strong> {{ event.event_time|time:"H:i" }} <br>
+            <strong>Количество вагонов:</strong> {{ event.calc.rows|length }} <br>
+            <strong>Итоговый объем:</strong> {{ event.calc.total_vol|floatformat:3 }} <br>
+            <strong>Сумма итого:</strong>
+            {% if event.calc.total_price is not None %}{{ event.calc.total_price|floatformat:2 }} ₸{% else %}—{% endif %}
+            {% if event.calc.skipped_wagons %}
+            <br><span class="text-danger">Вагонов без направления (не учтены в расчёте): {{ event.calc.skipped_wagons }}</span>
             {% endif %}
-            <strong>Тариф:</strong> {{ event.tariff.tariff }} ₸ <br>
-            <strong>Дата:</strong> {{ event.event_date }} <br>
-            <strong>Время:</strong> {{ event.event_time }} <br>
-            <strong>Количество вагонов:</strong> {{ event.wagons.all|length }} <br>
-            <strong>Итоговый объем:</strong> {{ event.total_vol|floatformat:3 }} <br>
-            <strong>Сумма итого:</strong> {{ event.total_price|floatformat:2 }}
+            {% if event.notes %}<br><strong>Заметка:</strong> {{ event.notes }}{% endif %}
         </div>
         <div>
             <button class="btn btn-success" onclick="openModal('addWagon', {{ event.id }})">Добавить вагон</button>
@@ -170,9 +156,7 @@
                     событие
                 </button>
             </form>
-            <button class="btn btn-secondary" onclick="openExportToExcel({{ event.id }})">Экспортировать событие
-            </button>
-
+            <a class="btn btn-secondary" href="{% url 'export_event' event.id %}">Экспорт в Excel</a>
         </div>
     </div>
     <div class="card-body">
@@ -188,36 +172,42 @@
                     <th>Протяженность 2</th>
                     <th>Протяженность 3</th>
                     <th>Объем за вагон</th>
-                    <th>Обьем за локоматив</th>
-                    <th>Итого обьем</th>
+                    <th>Объем за локомотив</th>
+                    <th>Итого объем</th>
                     <th>Итого</th>
                     <th>Действия</th>
                 </tr>
                 </thead>
 
                 <tbody>
-                {% for wagon in event.wagons.all %}
+                {% for row in event.calc.rows %}
                 <tr>
                     <td>{{ forloop.counter }}</td>
-                    <td>{{ wagon.destination.name }}</td>
-                    <td>{{ wagon.wagon_number }}</td>
-                    <td>{{ wagon.distance_1|floatformat:3 }}</td>
-                    <td>{{ wagon.distance_2|floatformat:3 }}</td>
-                    <td>{{ wagon.distance_3|floatformat:3 }}</td>
-                    <td>{{ wagon.dist_sum|floatformat:3 }}</td>
-                    <td>{{ wagon.vol_per_loko|floatformat:3 }}</td>
-                    <td>{{ wagon.total_vol_per_wagon|floatformat:3 }}</td>
-                    <td>{{ wagon.wagon_p_sum|floatformat:2 }}</td>
+                    {% if row.has_destination %}
+                    <td>{{ row.wagon.destination.name }}</td>
+                    <td>{{ row.wagon.wagon_number }}</td>
+                    <td>{{ row.distance_1|floatformat:3 }}</td>
+                    <td>{{ row.distance_2|floatformat:3 }}</td>
+                    <td>{{ row.distance_3|floatformat:3 }}</td>
+                    <td>{{ row.dist_sum|floatformat:3 }}</td>
+                    <td>{{ row.vol_per_loko|floatformat:3 }}</td>
+                    <td>{{ row.total_vol|floatformat:3 }}</td>
+                    <td>{% if row.price is not None %}{{ row.price|floatformat:2 }}{% else %}—{% endif %}</td>
+                    {% else %}
+                    <td class="text-danger">нет направления</td>
+                    <td>{{ row.wagon.wagon_number }}</td>
+                    <td colspan="7" class="text-muted">не учитывается в расчёте</td>
+                    {% endif %}
                     <td>
                         <div class="actions">
-                            <form method="post" action="{% url 'delete_wagon' wagon.id %}">
+                            <form method="post" action="{% url 'delete_wagon' row.wagon.id %}">
                                 {% csrf_token %}
                                 <button class="btn btn-danger btn-sm" type="submit"
-                                        onclick="return confirm('Удалить вагон: {{ wagon.destination.name }}: {{ wagon.wagon_number }}?')">
+                                        onclick="return confirm('Удалить вагон {{ row.wagon.wagon_number|escapejs }}?')">
                                     Удалить
                                 </button>
                             </form>
-                            <button class="btn btn-success btn-sm" onclick="openEditWagon({{ wagon.id }})">
+                            <button class="btn btn-success btn-sm" onclick="openEditWagon({{ row.wagon.id }})">
                                 Изменить
                             </button>
                         </div>
@@ -225,15 +215,41 @@
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="10" class="empty-row">Вагонов нет</td>
+                    <td colspan="11" class="empty-row">Вагонов нет</td>
                 </tr>
                 {% endfor %}
                 </tbody>
             </table>
         </div>
-
     </div>
 </div>
-<script src="{% static 'main/js/script.js' %}"></script>
+{% empty %}
+<p class="text-center text-muted my-5">
+    {% if request.GET.search_events %}Ничего не найдено по запросу «{{ request.GET.search_events }}».{% else %}Событий пока нет.{% endif %}
+</p>
 {% endfor %}
+
+{% if is_paginated %}
+<nav>
+  <ul class="pagination justify-content-center">
+    {% if page_obj.has_previous %}
+      <li class="page-item"><a class="page-link" href="{% querystring page=1 %}">&laquo;</a></li>
+      <li class="page-item"><a class="page-link" href="{% querystring page=page_obj.previous_page_number %}">‹</a></li>
+    {% endif %}
+
+    {% for num in page_obj.paginator.page_range %}
+      {% if page_obj.number == num %}
+        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+      {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+        <li class="page-item"><a class="page-link" href="{% querystring page=num %}">{{ num }}</a></li>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <li class="page-item"><a class="page-link" href="{% querystring page=page_obj.next_page_number %}">›</a></li>
+      <li class="page-item"><a class="page-link" href="{% querystring page=page_obj.paginator.num_pages %}">&raquo;</a></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
 {% endblock %}

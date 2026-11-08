@@ -1,37 +1,33 @@
-from django.shortcuts import render
-from django.contrib.auth.forms import UserCreationForm
-from django.contrib.auth.views import LoginView as DjangoLoginView
-from django.views.generic.edit import CreateView
-from django.views.generic import DetailView
-from django.contrib.auth.models import User
-from django.http import FileResponse, Http404
-from django.conf import settings
+import io
+
 from django.contrib.admin.views.decorators import staff_member_required
-import os
-from .forms import CustomLoginForm
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.management import call_command
+from django.http import HttpResponse
+from django.utils import timezone
+from django.views.generic import TemplateView
 
 
 @staff_member_required
 def download_db(request):
-    db_path = os.path.join(settings.BASE_DIR, 'db.sqlite3')
-    if not os.path.exists(db_path):
-        raise Http404("База данных не найдена")
-    return FileResponse(open(db_path, 'rb'), as_attachment=True, filename='db.sqlite3')
+    """Резервная копия всех данных в JSON (работает и с SQLite, и с PostgreSQL).
+
+    Восстановление: python manage.py loaddata <файл>.json
+    """
+    buffer = io.StringIO()
+    call_command(
+        "dumpdata",
+        "--natural-foreign", "--natural-primary",
+        "--exclude=contenttypes", "--exclude=auth.permission",
+        "--exclude=admin.logentry", "--exclude=sessions",
+        "--indent=2",
+        stdout=buffer,
+    )
+    filename = f"vagondar_backup_{timezone.localtime():%Y-%m-%d_%H-%M}.json"
+    response = HttpResponse(buffer.getvalue(), content_type="application/json; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
-class LoginView(DjangoLoginView):
-    template_name = "accounts/login_page.html"
-
-
-class RegisterView(CreateView):
-    form_class = UserCreationForm
-    template_name = "accounts/register_page.html"
-
-
-class ProfileView(DetailView):
-    model = User
+class ProfileView(LoginRequiredMixin, TemplateView):
     template_name = "accounts/profile.html"
-    context_object_name = "profile_user"
-
-    def get_object(self):
-        return self.request.user

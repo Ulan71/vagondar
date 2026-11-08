@@ -1,450 +1,189 @@
-from django.shortcuts import render
+from datetime import datetime
+
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import ListView, DeleteView, View, CreateView
-from django.shortcuts import get_object_or_404, redirect
-from .models import TrainEvent, TariffHistory, Wagon, Destination
-from django.views.generic.edit import FormMixin, UpdateView
-from django.db.models import Q
-from . import forms
-from django.urls import reverse_lazy
+from django.db.models import Prefetch, Q
 from django.http import HttpResponse
-from openpyxl import *
-from openpyxl.styles import Border, Side, PatternFill, Font, GradientFill, Alignment
-import io
-import math
+from django.shortcuts import get_object_or_404, redirect
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views import View
+from django.views.generic import ListView
+
+from . import forms
+from .calculations import calculate_event
+from .excel import XLSX_CONTENT_TYPE, build_workbook
+from .models import TariffHistory, TrainEvent, Wagon
 
 
-# class AddWagonView(CreateView):
-#     model = Wagon
-#     form_class = forms.AddWagonForm
-#     template_name = "main/add_wagon_page.html"
-#     success_url = reverse_lazy('main')
+def events_queryset():
+    wagons = Wagon.objects.select_related("destination").order_by("id")
+    return (
+        TrainEvent.objects
+        .select_related("tariff")
+        .prefetch_related(Prefetch("wagons", queryset=wagons))
+        .order_by("-event_date", "-event_time")
+    )
 
 
-class MainViews(LoginRequiredMixin, FormMixin, ListView):
-    model = TrainEvent
+def redirect_back(request, fallback="main"):
+    """Возвращает пользователя туда, откуда пришёл запрос (сохраняет страницу и поиск)."""
+    referer = request.META.get("HTTP_REFERER")
+    if referer and url_has_allowed_host_and_scheme(
+        referer, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return redirect(referer)
+    return redirect(fallback)
+
+
+def form_errors_text(form):
+    parts = []
+    for field_name, errors in form.errors.items():
+        label = form.fields[field_name].label if field_name in form.fields else ""
+        parts.append(f"{label}: {' '.join(errors)}" if label else " ".join(errors))
+    return "; ".join(parts)
+
+
+def parse_date(text):
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+class MainViews(LoginRequiredMixin, ListView):
     template_name = "main/index.html"
-    context_object_name = 'events'
-    ordering = ['-event_date', '-event_time']
-    form_class = forms.AddWagonForm
-    success_url = reverse_lazy("main")
+    context_object_name = "events"
     paginate_by = 25
 
+    # action_type -> (класс формы, сообщение об успехе)
+    CREATE_ACTIONS = {
+        "add_event": (forms.AddEventForm, "Событие добавлено"),
+        "add_destination": (forms.AddDestinationForm, "Направление добавлено"),
+        "add_tariff": (forms.AddTariffForm, "Тариф добавлен"),
+    }
+
     def get_queryset(self):
-        query = self.request.GET.get('search_events')
-        qs = TrainEvent.objects.select_related("tariff").prefetch_related('wagons').order_by("-event_date", "-event_time")
+        qs = events_queryset()
+        query = (self.request.GET.get("search_events") or "").strip()
+        if not query:
+            return qs
 
-        if query:
-            qs = qs.filter(
-                Q(id__icontains=query) |
-                Q(wagons__wagon_number__icontains=query) |
-                Q(event_date__icontains=query)
-            ).distinct()
-        return qs
+        found_date = parse_date(query)
+        if found_date:
+            return qs.filter(event_date=found_date)
 
-    def get_context_data(self, *, object_list=None, **kwargs):
+        condition = Q(wagons__wagon_number__icontains=query)
+        if query.isdigit():
+            condition |= Q(id=int(query))
+        return qs.filter(condition).distinct()
+
+    def paginate_queryset(self, queryset, page_size):
+        # get_page() вместо page(): несуществующая страница -> последняя, а не 404
+        paginator = self.get_paginator(queryset, page_size)
+        page = paginator.get_page(self.request.GET.get(self.page_kwarg))
+        return paginator, page, page.object_list, page.has_other_pages()
+
+    def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context.setdefault("add_wagon_form", forms.AddWagonForm)
-        context.setdefault("add_event_form", forms.AddEventForm)
-        context.setdefault("add_destination_form", forms.AddDestinationForm)
-        context.setdefault("add_tariff_form", forms.AddTariffForm)
-
-        for i in context["events"]:
-            total_vol_list = []
-            total_price = 0
-
-            wagons = i.wagons.all()
-            distances = wagons.values_list("destination__distance_km", flat=True)
-            min_distance = float(min(distances)) if distances else 0
-            for t in wagons:
-                dist = t.destination.distance_km
-                if dist > min_distance:
-                    t.distance_1 = min_distance
-                    t.distance_2 = float(dist) - min_distance
-                    t.distance_3 = 0
-                else:
-                    t.distance_1 = dist
-                    t.distance_2 = 0
-                    t.distance_3 = 0
-
-                t.distance_1 = float(t.distance_1)
-                t.distance_2 = float(t.distance_2)
-                t.distance_3 = float(t.distance_3)
-                t.dist_sum = t.distance_1 + t.distance_2 + t.distance_3
-                wagons_count = len(i.wagons.all())
-                if wagons_count < 2:
-                    t.vol_per_loko =(t.distance_1 * 3) / wagons_count + t.distance_2 * 3 / wagons_count
-                else:
-                    # vol_per_loko объем за локомотив
-                    t.vol_per_loko = (t.distance_1 * 3) / wagons_count + t.distance_2 * 3 / (wagons_count - 1)
-                t.total_vol_per_wagon = t.vol_per_loko + t.dist_sum
-                temp_price = t.total_vol_per_wagon * float(i.tariff.tariff)
-                t.wagon_p_sum = temp_price
-                total_price += temp_price
-                total_vol_list.append(t.total_vol_per_wagon)
-            i.total_vol = sum(total_vol_list)
-            i.total_price = total_price
-
+        context["add_wagon_form"] = forms.AddWagonForm()
+        context["add_event_form"] = forms.AddEventForm()
+        context["add_destination_form"] = forms.AddDestinationForm()
+        context["add_tariff_form"] = forms.AddTariffForm()
+        context["show_actions"] = True
+        for event in context["events"]:
+            event.calc = calculate_event(event, list(event.wagons.all()))
         return context
 
     def post(self, request, *args, **kwargs):
-        form_control = {"add_wagon": forms.AddWagonForm,
-                        "add_event": forms.AddEventForm,
-                        "add_destination": forms.AddDestinationForm,
-                        "add_tariff": forms.AddTariffForm}
+        action = request.POST.get("action_type")
 
-        action_type = request.POST.get('action_type')
+        if action == "edit_event":
+            event = get_object_or_404(TrainEvent, pk=request.POST.get("event_id") or 0)
+            return self._save(forms.AddEventForm(request.POST, instance=event), "Событие изменено")
 
-        if action_type == "edit_event":
-            event_id = request.POST.get('event_id')
-            event = get_object_or_404(TrainEvent, pk=event_id)
-            form = forms.AddEventForm(request.POST, instance=event)
-            if form.is_valid():
-                form.save()
-                return redirect(self.get_success_url())
-            else:
-                return self.form_invalid(form)
+        if action == "edit_wagon":
+            wagon = get_object_or_404(Wagon, pk=request.POST.get("wagon_id") or 0)
+            return self._save(forms.AddWagonForm(request.POST, instance=wagon), "Вагон изменён")
 
-        elif action_type == "edit_wagon":
-            wagon_id = request.POST.get("wagon_id")
-            wagon = get_object_or_404(Wagon, pk=wagon_id)
-            form = forms.AddWagonForm(request.POST, instance=wagon)
-            if form.is_valid():
-                form.save()
-                return redirect(self.get_success_url())
-            else:
-                return self.form_invalid(form)
+        if action == "add_wagon":
+            event = get_object_or_404(TrainEvent, pk=request.POST.get("event_id") or 0)
+            form = forms.AddWagonForm(request.POST)
+            form.instance.event = event
+            return self._save(form, "Вагон добавлен")
 
-        form_class = form_control.get(action_type)
-        form = form_class(request.POST)
+        if action in self.CREATE_ACTIONS:
+            form_class, success = self.CREATE_ACTIONS[action]
+            return self._save(form_class(request.POST), success)
 
-        if action_type == "add_wagon":
-            event_id = request.POST.get('event_id')
+        messages.error(request, "Неизвестное действие.")
+        return redirect_back(request)
 
-            if form.is_valid():
-                instance = form.save(commit=False)
-                if event_id:
-                    instance.event = TrainEvent.objects.get(id=event_id)
-                instance.save()
-                return redirect(self.get_success_url())
-            else:
-                return self.form_invalid(form)
-
-        elif action_type in ["add_event", "add_destination", "add_tariff"]:
-            if form.is_valid():
-                instance = form.save(commit=False)
-                instance.save()
-                return redirect(self.get_success_url())
-            else:
-                return self.form_invalid(form)
-
-    def get(self, request, *args, **kwargs):
-        if request.GET.get("export") == "1":
-            return self.export_to_excel()
-        elif request.GET.get("export") == "2":
-            return self.export_to_excel_by_config()
-        return super().get(request, *args, **kwargs)
-
-    def export_to_excel_by_config(self):
-
-        start_date = self.request.GET.get("start_date")
-        end_date = self.request.GET.get("end_date")
-        operation_type = self.request.GET.get("operation_type")
-
-        if start_date and end_date:
-            qs = TrainEvent.objects.select_related("tariff").prefetch_related('wagons').filter(event_date__range=(start_date, end_date)).filter(operation_type=operation_type)
-
-            wb = Workbook()
-            ws = wb.active
-
-            for i in qs:
-                wagons = i.wagons.all()
-                event_date = wagons.values_list("event__event_date", flat=True)
-                event_time = wagons.values_list("event__event_time", flat=True)
-                operation_type = wagons.values_list("event__operation_type", flat=True)
-                # print(wagons.values_list("wagon_number", flat=True))
-                # print(wagons.values_list("event__event_date", flat=True))
-                ws = wb.create_sheet(f"{event_date[0].strftime("%d.%m.%Y")}.")
-
-                #  Создание таблицы
-                ws.column_dimensions['A'].width = 4
-                ws.column_dimensions['B'].width = 39
-                ws.column_dimensions['C'].width = 4
-                ws.column_dimensions['D'].width = 13
-                ws.column_dimensions['E'].width = 10
-                ws.column_dimensions['F'].width = 21
-                ws.column_dimensions["G"].width = 12
-                ws.column_dimensions["H"].width = 12
-                ws.column_dimensions["I"].width = 12
-                ws.column_dimensions["J"].width = 12
-                ws.column_dimensions["K"].width = 12
-                ws.column_dimensions["L"].width = 12
-                ws.column_dimensions["M"].width = 15
-                ws.column_dimensions["N"].width = 17
-                ws.column_dimensions["O"].width = 13
-
-                ws.merge_cells('B1:C2')
-                ws.merge_cells('D1:D2')
-                ws.merge_cells('E1:E2')
-                ws.merge_cells('F1:F2')
-                ws.merge_cells('D1:D2')
-                ws.merge_cells('G1:I2')
-                ws.merge_cells('J1:J2')
-                ws.merge_cells('K1:K2')
-                ws.merge_cells('L1:L2')
-                ws.merge_cells('M1:M2')
-                ws.merge_cells('N1:O2')
-
-                font = Font(name="TimesNewRoman", size=12, bold=True, color="000000")
-                font_wagons = Font(name="TimesNewRoman", size=12, bold=False, color="000000")
-                alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-
-                thin = Side(border_style="thin", color="000000")
-
-                for border_cords in range(2, 16):
-                    ws.cell(row=1, column=border_cords).border = Border(top=thin, left=thin, bottom=thin, right=thin)
-                    ws.cell(row=2, column=border_cords).border = Border(top=thin, left=thin, bottom=thin, right=thin)
-                    ws.cell(row=1, column=border_cords).font = font
-                    ws.cell(row=1, column=border_cords).alignment = alignment
-
-                ws["O3"].alignment = alignment
-
-                ws["D1"] = "проезд локомотива (1,5*2)"
-                ws["E1"] = "Подача"
-                ws["F1"] = "Подача вагона+локомотив"
-                ws["G1"] = "Протяженность"
-                ws["J1"] = "Обьем за вагон"
-                ws["K1"] = "Обьем за локоматив"
-                ws["L1"] = "Итого обьем"
-                ws["M1"] = 'Тариф ТОО "Е.Ж.Д."'
-                ws["N1"] = "Итого"
-
-                wagons_number = wagons.values_list("wagon_number", flat=True)
-                destination_name = wagons.values_list("destination__name", flat=True)
-                tariff = wagons.values_list("event__tariff__tariff", flat=True)
-
-                operation_type = operation_type[0]
-
-                if operation_type == "arrival":
-                    operation_type = "Пригон"
-                elif operation_type == "removal":
-                    operation_type = "Уборка"
-
-                wagons_count = len(wagons_number)
-                event = qs.first()
-                all_wagons = event.wagons.all()
-
-                distances = list(wagons.values_list('destination__distance_km', flat=True))
-                min_distances = float(min(distances)) if distances else distances
-
-                event_datetime_info = f"{event.event_date.strftime("%d.%m.%Y")} ({operation_type} {event_time[0].strftime("%H:%M")})"
-
-                ws["B1"] = event_datetime_info
-
-                for border_x in range(wagons_count):
-                    ws.cell(row=border_x + 3, column=1).value = border_x + 1
-                    ws.cell(row=border_x + 3, column=2).value = f"{destination_name[border_x]}: {wagons_number[border_x]}"
-                    ws.cell(row=border_x + 3, column=3).value = 1
-                    ws.cell(row=border_x + 3, column=4).value = 3
-                    ws.cell(row=border_x + 3, column=5).value = 1
-                    ws.cell(row=border_x + 3, column=6).value = "=C3+D3*E3"
-                    ws.cell(row=border_x + 3, column=7).value = min_distances
-                    ws.cell(row=border_x + 3, column=8).value = float(distances[border_x]) - min_distances
-                    ws.cell(row=border_x + 3, column=10).value = f"=SUM(G{3 + border_x}:I{3 + border_x})"
-                    ws.cell(row=border_x + 3, column=10).number_format = "0.000"
-                    ws.cell(row=border_x + 3,
-                            column=11).value = f"=D{3 + border_x}*G{3 + border_x}/{wagons_count}+D{3 + border_x}*H{3 + border_x}/{(wagons_count - 1) if wagons_count > 1 else wagons_count}"
-                    ws.cell(row=border_x + 3, column=11).number_format = "0.000"
-                    ws.cell(row=border_x + 3, column=12).value = f"=SUM(J{3 + border_x}:K{3 + border_x})"
-                    ws.cell(row=border_x + 3, column=12).number_format = "0.000"
-                    ws.cell(row=border_x + 3, column=13).value = tariff[border_x]
-                    ws.cell(row=border_x + 3, column=14).font = font_wagons
-                    ws.cell(row=border_x + 3, column=14).value = f"=L{3 + border_x}*M{3 + border_x}"
-                    ws.cell(row=border_x + 3, column=14).number_format = "0.00"
-                    ws.cell(row=3, column=15).font = font_wagons
-                    ws.cell(row=3, column=15).value = f"=SUM(N3:N{wagons_count + 2})"
-                    ws.cell(row=3, column=15).number_format = "0.00"
-
-                    ws.merge_cells(f'O3:O{wagons_count + 2}')
-
-                    for border_range in range(2, 16):
-                        ws.cell(row=3 + border_x, column=border_range).border = Border(top=thin, left=thin, bottom=thin,
-                                                                                       right=thin)
-                        ws.cell(row=border_x + 3, column=border_range).font = font_wagons
-
-            buffer = io.BytesIO()
-            wb.save(buffer)
-            buffer.seek(0)
-
-            filename = f"test.xlsx"
-            resp = HttpResponse(buffer.getvalue(),
-                                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            return resp
-            # return HttpResponse("1")
-            resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-            resp["Content-Length"] = buffer.getbuffer().nbytes
-
-        else:
-            return redirect("main")
-
-    def export_to_excel(self):
-        event_id = self.request.GET.get('event_id')
-        qs = TrainEvent.objects.select_related("tariff").prefetch_related('wagons').filter(id=event_id)
-        event = qs.first()
-        wagons = event.wagons.all()
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Тестовая страница"
-
-        #  Создание таблицы
-        ws.column_dimensions['A'].width = 4
-        ws.column_dimensions['B'].width = 39
-        ws.column_dimensions['C'].width = 4
-        ws.column_dimensions['D'].width = 13
-        ws.column_dimensions['E'].width = 10
-        ws.column_dimensions['F'].width = 21
-        ws.column_dimensions["G"].width = 12
-        ws.column_dimensions["H"].width = 12
-        ws.column_dimensions["I"].width = 12
-        ws.column_dimensions["J"].width = 12
-        ws.column_dimensions["K"].width = 12
-        ws.column_dimensions["L"].width = 12
-        ws.column_dimensions["M"].width = 15
-        ws.column_dimensions["N"].width = 17
-        ws.column_dimensions["O"].width = 13
-
-        ws.merge_cells('B1:C2')
-        ws.merge_cells('D1:D2')
-        ws.merge_cells('E1:E2')
-        ws.merge_cells('F1:F2')
-        ws.merge_cells('D1:D2')
-        ws.merge_cells('G1:I2')
-        ws.merge_cells('J1:J2')
-        ws.merge_cells('K1:K2')
-        ws.merge_cells('L1:L2')
-        ws.merge_cells('M1:M2')
-        ws.merge_cells('N1:O2')
-
-        font = Font(name="TimesNewRoman", size=12, bold=True, color="000000")
-        font_wagons = Font(name="TimesNewRoman", size=12, bold=False, color="000000")
-        alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-
-        thin = Side(border_style="thin", color="000000")
-
-        for border_cords in range(2, 16):
-            ws.cell(row=1, column=border_cords).border = Border(top=thin, left=thin, bottom=thin, right=thin)
-            ws.cell(row=2, column=border_cords).border = Border(top=thin, left=thin, bottom=thin, right=thin)
-            ws.cell(row=1, column=border_cords).font = font
-            ws.cell(row=1, column=border_cords).alignment = alignment
-
-        ws["O3"].alignment = alignment
-
-        ws["D1"] = "проезд локомотива (1,5*2)"
-        ws["E1"] = "Подача"
-        ws["F1"] = "Подача вагона+локомотив"
-        ws["G1"] = "Протяженность"
-        ws["J1"] = "Обьем за вагон"
-        ws["K1"] = "Обьем за локоматив"
-        ws["L1"] = "Итого обьем"
-        ws["M1"] = 'Тариф ТОО "Е.Ж.Д."'
-        ws["N1"] = "Итого"
-
-        all_wagons = event.wagons.all()
-        operation_type = event.operation_type
-        if operation_type == "arrival":
-            operation_type = "Пригон"
-        elif operation_type == "removal":
-            operation_type = "Уборка"
-
-        event_datetime_info = f"{event.event_date.strftime("%d.%m.%Y")} ({operation_type} {event.event_time.strftime('%H:%M')})"
-
-        distances = list(wagons.values_list('destination__distance_km', flat=True))
-        min_distances = float(min(distances)) if distances else distances
-        wagons_count = len(all_wagons)
-
-        ws["B1"] = event_datetime_info
-
-        for wagonId in range(wagons_count):
-            ready_data = all_wagons[wagonId]
-            ws.cell(row=wagonId + 3, column=1).value = wagonId + 1
-            ws.cell(row=wagonId + 3, column=2).value = f"{ready_data.destination.name}: {ready_data.wagon_number}"
-            ws.cell(row=wagonId + 3, column=2).font = font_wagons
-            ws.cell(row=wagonId + 3, column=3).font = font_wagons
-            ws.cell(row=wagonId + 3, column=3).value = 1
-            ws.cell(row=wagonId + 3, column=4).font = font_wagons
-            ws.cell(row=wagonId + 3, column=4).value = 3
-            ws.cell(row=wagonId + 3, column=5).font = font_wagons
-            ws.cell(row=wagonId + 3, column=5).value = 1
-            ws.cell(row=wagonId + 3, column=6).font = font_wagons
-            ws.cell(row=wagonId + 3, column=6).value = "=C3+D3*E3"
-            ws.cell(row=wagonId + 3, column=7).font = font_wagons
-            ws.cell(row=wagonId + 3, column=7).value = min_distances
-            ws.cell(row=wagonId + 3, column=8).font = font_wagons
-            ws.cell(row=wagonId + 3, column=8).value = float(ready_data.destination.distance_km) - min_distances
-            ws.cell(row=wagonId + 3, column=10).font = font_wagons
-            ws.cell(row=wagonId + 3, column=10).value = f"=SUM(G{3+wagonId}:I{3+wagonId})"
-            ws.cell(row=wagonId + 3, column=10).number_format = "0.000"
-            ws.cell(row=wagonId + 3, column=11).font = font_wagons
-            ws.cell(row=wagonId + 3, column=11).value = f"=D{3+wagonId}*G{3+wagonId}/{wagons_count}+D{3+wagonId}*H{3+wagonId}/{(wagons_count - 1) if wagons_count > 1 else wagons_count}"
-            ws.cell(row=wagonId + 3, column=11).number_format = "0.000"
-            ws.cell(row=wagonId + 3, column=12).font = font_wagons
-            ws.cell(row=wagonId + 3, column=12).value = f"=SUM(J{3 + wagonId}:K{3 + wagonId})"
-            ws.cell(row=wagonId + 3, column=12).number_format = "0.000"
-            ws.cell(row=wagonId + 3, column=13).font = font_wagons
-            ws.cell(row=wagonId + 3, column=13).value = ready_data.event.tariff.tariff
-            ws.cell(row=wagonId + 3, column=14).font = font_wagons
-            ws.cell(row=wagonId + 3, column=14).value = f"=L{3+wagonId}*M{3+wagonId}"
-            ws.cell(row=wagonId + 3, column=14).number_format = "0.00"
-            ws.cell(row=3, column=15).font = font_wagons
-            ws.cell(row=3, column=15).value = f"=SUM(N3:N{wagons_count + 2})"
-            ws.cell(row=3, column=15).number_format = "0.00"
-            ws.merge_cells(f'O3:O{wagons_count+2}')
-
-        for border_x in range(1, wagons_count + 1):
-            for border_range in range(2, 16):
-                ws.cell(row=2+border_x, column=border_range).border = Border(top=thin, left=thin, bottom=thin, right=thin)
-
-        buffer = io.BytesIO()
-        wb.save(buffer)
-        buffer.seek(0)
-
-        filename = f"test{event.id}.xlsx"
-        resp = HttpResponse(buffer.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        return resp
-
-        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        resp["Content-Length"] = buffer.getbuffer().nbytes
-
-
-def edit_event(request, pk):
-    event = get_object_or_404(TrainEvent, pk=pk)
-    if request.method == 'POST':
-        form = AddEventView(request.POST, instance=event)
+    def _save(self, form, success_message):
         if form.is_valid():
             form.save()
-            return redirect('main')
-    return redirect('main')
+            messages.success(self.request, success_message)
+        else:
+            messages.error(self.request, f"Не сохранено. {form_errors_text(form)}")
+        return redirect_back(self.request)
 
 
-class AddEventView(LoginRequiredMixin, ListView):
-    model = Wagon
-    template_name = "main/add_event_page.html"
+def xlsx_response(content, filename):
+    response = HttpResponse(content, content_type=XLSX_CONTENT_TYPE)
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+class ExportEventView(LoginRequiredMixin, View):
+    def get(self, request, pk):
+        event = get_object_or_404(events_queryset(), pk=pk)
+        filename = f"vagondar_{event.event_date:%Y-%m-%d}_{event.operation_type}_{event.pk}.xlsx"
+        return xlsx_response(build_workbook([event]), filename)
+
+
+class ExportPeriodView(LoginRequiredMixin, View):
+    def get(self, request):
+        start = parse_date(request.GET.get("start_date", ""))
+        end = parse_date(request.GET.get("end_date", ""))
+        operation_type = request.GET.get("operation_type", "")
+
+        if not start or not end:
+            messages.error(request, "Укажите начальную и конечную дату для экспорта.")
+            return redirect_back(request)
+        if start > end:
+            start, end = end, start
+
+        events = events_queryset().filter(event_date__range=(start, end))
+        if operation_type in dict(TrainEvent.OPERATION_CHOICES):
+            events = events.filter(operation_type=operation_type)
+        events = list(events.order_by("event_date", "event_time"))
+
+        if not events:
+            messages.warning(request, f"За период {start:%d.%m.%Y} – {end:%d.%m.%Y} событий нет.")
+            return redirect_back(request)
+
+        filename = f"vagondar_{start:%Y-%m-%d}_{end:%Y-%m-%d}.xlsx"
+        return xlsx_response(build_workbook(events), filename)
 
 
 class TariffHistoryViews(LoginRequiredMixin, ListView):
-    model = TariffHistory
     template_name = "main/tariff_history_page.html"
+    context_object_name = "tariffs"
+
+    def get_queryset(self):
+        return TariffHistory.objects.order_by("-start_date")
 
 
-class DeleteWagonView(View):
+class DeleteWagonView(LoginRequiredMixin, View):
     def post(self, request, pk):
-        wagon = get_object_or_404(Wagon, pk=pk)
-        wagon.delete()
-        return redirect('main')
+        get_object_or_404(Wagon, pk=pk).delete()
+        messages.success(request, "Вагон удалён")
+        return redirect_back(request)
 
 
-class DeleteEventView(View):
+class DeleteEventView(LoginRequiredMixin, View):
     def post(self, request, pk):
-        event = get_object_or_404(TrainEvent, pk=pk)
-        event.delete()
-        return redirect('main')
+        get_object_or_404(TrainEvent, pk=pk).delete()
+        messages.success(request, "Событие удалено")
+        return redirect_back(request)
